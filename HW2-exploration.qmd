@@ -1,0 +1,163 @@
+---
+title: "HW2-exploration.qmd"
+author: "Yos Ramirez"
+date: 2025-02-05
+format: 
+  html:
+    embed-resources: true
+editor: visual
+---
+
+# Questions
+
+Which states have the most emissions versus power plants?
+How emissions (NOx, SO2, CO2) compare throughout the power plants primary fuel category?
+Whether power plants emissions have changed over time? (if including past data)
+
+# Variables of Interest
+
+- PNAME (plant name) 
+- PLPRMFL (primary fuel category) 
+- PLNOXAN (plant annual NOx emissions in tons) 
+- PLSO2AN (plant annual SO2 emissions in tons) 
+- PLCO2AN (plant annual CO2 emissions in tons) 
+- LAT and LON of the plant to plot emissions 
+- STATE 
+- COUNTY 
+- CITY
+
+### Load in libraries and data
+
+```{r}
+# Load necessary libraries
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+```
+
+```{r}
+# Load in main data and list the sheet names in the Excel file
+sheet_names <- excel_sheets("data/egrid2023_data_rev1.xlsx")
+print(sheet_names)
+
+```
+
+```{r}
+# Read necessary data from a specific sheet
+data_sheet <- read_excel("data/egrid2023_data_rev1.xlsx", sheet = "PLNT23")
+# Save column names to a .txt file to view
+write(colnames(data_sheet), "column_names.txt")
+
+```
+
+### Select for variables of interest 
+
+```{r}
+# Select specific columns (variables)
+selected_data <- data_sheet %>%
+  select(`Data Year`, `Plant state abbreviation`, `Plant name`, `Plant annual CO2 emissions (tons)`, `Plant annual SO2 emissions (tons)`, `Plant annual NOx emissions (tons)`, `Plant primary fuel category`, `Plant latitude`, `Plant longitude`)
+
+# Look at summary of selected data
+summary(selected_data)
+
+```
+
+### Clean data and wrangle
+
+```{r}
+# Remove rows with missing values
+cleaned_data <- na.omit(selected_data)
+
+# Convert emissions columns to numeric
+cleaned_data$`Plant annual CO2 emissions (tons)` <- as.numeric(cleaned_data$`Plant annual CO2 emissions (tons)`)
+cleaned_data$`Plant annual SO2 emissions (tons)` <- as.numeric(cleaned_data$`Plant annual SO2 emissions (tons)`)
+cleaned_data$`Plant annual NOx emissions (tons)` <- as.numeric(cleaned_data$`Plant annual NOx emissions (tons)`)
+
+# Remove rows where the state abbreviation is "PSTATABB"
+cleaned_data <- cleaned_data %>%
+  filter(`Plant state abbreviation` != "PSTATABB")
+
+```
+
+```{r}
+# Summarize the data
+state_summary <- cleaned_data %>%
+  group_by(`Plant state abbreviation`) %>%
+  summarize(
+    # Calculate mean emissions for each pollutant
+    mean_CO2_emissions = mean(`Plant annual CO2 emissions (tons)`, na.rm = TRUE),
+    mean_SO2_emissions = mean(`Plant annual SO2 emissions (tons)`, na.rm = TRUE),
+    mean_NOx_emissions = mean(`Plant annual NOx emissions (tons)`, na.rm = TRUE),
+    
+    # Calculate the number of plants in each state
+    num_plants = n()
+  )
+
+# View the summary
+print(state_summary)
+
+```
+
+### Visualize data
+
+```{r}
+# Scatter plot of CO2 emissions with color based on emissions
+ggplot(state_summary, aes(x = `Plant state abbreviation`, y = mean_CO2_emissions, color = mean_CO2_emissions)) +
+  geom_point(size = 3) +  # Add size to the points
+  labs(
+    title = "CO2 Emissions by State",  # Title of the plot
+    x = "State",  # Label for the x-axis
+    y = "CO2 Emissions (tons)"  # Label for the y-axis
+  ) +
+  scale_color_gradient(low = "blue", high = "red") +  # Color gradient from blue to red
+  theme_minimal() +  # Apply minimal theme for a clean look
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),  # Rotate x-axis labels for better readability
+    legend.position = "none"  # Position the legend to the right
+  )
+
+```
+
+```{r}
+# Scatter plot of SO2 emissions with size based on emissions
+ggplot(state_summary, aes(x = `Plant state abbreviation`, y = mean_SO2_emissions, size = mean_SO2_emissions)) +
+  geom_point(color = "blue") +  # Set color to blue for all points
+  labs(
+    title = "SO2 Emissions by State",  # Title of the plot
+    x = "State",  # Label for the x-axis
+    y = "SO2 Emissions (tons)"  # Label for the y-axis
+  ) +
+  scale_size_continuous(range = c(2, 10)) +  # Adjust the size range of points
+  theme_minimal() +  # Apply minimal theme for a clean look
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),  # Rotate x-axis labels for better readability
+    legend.position = "none"  # Remove the legend
+  )
+
+```
+
+```{r}
+# Scatter plot of NOx emissions with both size and color based on emissions
+ggplot(state_summary, aes(x = `Plant state abbreviation`, y = mean_NOx_emissions, size = mean_NOx_emissions, color = mean_NOx_emissions)) +
+  geom_point() +  # Add points
+  labs(
+    title = "NOx Emissions by State",  # Title of the plot
+    x = "State",  # Label for the x-axis
+    y = "NOx Emissions (tons)"  # Label for the y-axis
+  ) +
+  scale_size_continuous(range = c(2, 10)) +  # Adjust the size range of points
+  scale_color_gradient(low = "blue", high = "red") +  # Color gradient from blue (low) to red (high)
+  theme_minimal() +  # Apply minimal theme for a clean look
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),  # Rotate x-axis labels for better readability
+    legend.position = "none"  # Remove the legend
+  )
+
+```
+
+Notes
+
+**
+
