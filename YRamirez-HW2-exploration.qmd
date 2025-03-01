@@ -1,0 +1,370 @@
+---
+title: "Power plants emissions exploration.qmd"
+subtitle: "Looking for patterns and possible visualizations"
+author: "Yos Ramirez"
+date: 2025-02-05
+format: 
+  html:
+    embed-resources: true
+editor: visual
+---
+
+# Overall question
+
+How do emissions (NOx, SO2, CO2) in the U.S. vary by state and fuel type, and what is the relationship between the number of power plants and total emissions in each state?
+
+# Variables of Interest
+
+- PNAME (plant name) 
+- PLPRMFL (primary fuel category) 
+- PLNOXAN (plant annual NOx emissions in tons) 
+- PLSO2AN (plant annual SO2 emissions in tons) 
+- PLCO2AN (plant annual CO2 emissions in tons) 
+- LAT and LON of the plant to plot 
+- STATE 
+
+### Load in libraries and data
+
+```{r}
+#| warning = FALSE
+
+# Load libraries and suppress messages
+suppressMessages(library(readxl))
+suppressMessages(library(dplyr))
+suppressMessages(library(tidyr))
+suppressMessages(library(ggplot2))
+suppressMessages(library(sf))
+suppressMessages(library(viridis))
+suppressMessages(library(fmsb))
+suppressMessages(library(plotly))
+suppressMessages(library(treemap))
+```
+
+```{r}
+# Load in main data and list the sheet names in the Excel file
+sheet_names <- excel_sheets("data/egrid2023_data_rev1.xlsx")
+print(sheet_names)
+
+```
+
+```{r}
+# Read necessary data from a specific sheet
+data_sheet <- read_excel("data/egrid2023_data_rev1.xlsx", sheet = "PLNT23")
+# Save column names to a .txt file to view
+write(colnames(data_sheet), "column_names.txt")
+
+```
+
+### Clean and wrangle selected data
+
+```{r, warning=FALSE}
+# Select specific columns (variables)
+selected_data <- data_sheet %>%
+  select(`Data Year`, `Plant state abbreviation`, `Plant name`, `Plant annual CO2 emissions (tons)`, `Plant annual SO2 emissions (tons)`, `Plant annual NOx emissions (tons)`, `Plant primary fuel category`, `Plant latitude`, `Plant longitude`)
+# Remove rows with missing values
+cleaned_data <- na.omit(selected_data)
+# Convert emissions columns to numeric
+cleaned_data$`Plant annual CO2 emissions (tons)` <- as.numeric(cleaned_data$`Plant annual CO2 emissions (tons)`)
+cleaned_data$`Plant annual SO2 emissions (tons)` <- as.numeric(cleaned_data$`Plant annual SO2 emissions (tons)`)
+cleaned_data$`Plant annual NOx emissions (tons)` <- as.numeric(cleaned_data$`Plant annual NOx emissions (tons)`)
+# Remove rows where the state abbreviation is "PSTATABB"
+cleaned_data <- cleaned_data %>%
+  filter(`Plant state abbreviation` != "PSTATABB")
+```
+
+```{r}
+# Summarize the data by state and primary fuel category
+state_summary <- cleaned_data %>%
+  group_by(`Plant state abbreviation`) %>%
+  summarize(
+    # Calculate total emissions for each pollutant
+    total_CO2_emissions = sum(`Plant annual CO2 emissions (tons)`, na.rm = TRUE),
+    total_SO2_emissions = sum(`Plant annual SO2 emissions (tons)`, na.rm = TRUE),
+    total_NOx_emissions = sum(`Plant annual NOx emissions (tons)`, na.rm = TRUE),
+    # Calculate the number of plants in each state and fuel category
+    num_plants = n(),
+    # Add total emissions by summing the three types
+    total_emissions = total_CO2_emissions + total_SO2_emissions + total_NOx_emissions
+  )
+# Calculate the most common primary fuel category per state
+fuel_category_per_state <- cleaned_data %>%
+  group_by(`Plant state abbreviation`) %>%
+  count(`Plant primary fuel category`) %>%
+  top_n(1, n) %>%
+  select(`Plant state abbreviation`, `Plant primary fuel category`) %>%
+  rename(most_common_primary_fuel = `Plant primary fuel category`)
+
+# Merge fuel category with state summary data
+state_summary <- state_summary %>%
+  left_join(fuel_category_per_state, by = c("Plant state abbreviation" = "Plant state abbreviation"))
+```
+
+```{r}
+# Read in json state hexagon boundaries
+my_hexbin <- read_sf("data/us_states_hexgrid.geojson")
+# Reformat
+my_hexbin <- my_hexbin %>%
+  mutate(google_name = gsub(" \\(United States\\)", "", google_name))
+# Merge geospatial and numerical information
+my_hexbin_state <- my_hexbin %>%
+  left_join(state_summary, by = c("iso3166_2" = "Plant state abbreviation"))
+# Filter out DC from the dataset
+my_hexbin_state <- my_hexbin_state %>%
+  filter(iso3166_2 != "DC")
+# Reproject the hexbin data to a new CRS 
+my_hexbin_state <- st_transform(my_hexbin_state, crs = 3395)
+```
+
+### Visualize data
+
+```{r}
+ggplot(my_hexbin_state) +
+  # Fill map based on 'total_emissions' with custom breaks
+  geom_sf(aes(fill = total_emissions), color = "white") +
+  
+  # Use 'YlOrRd' color scale for emissions with custom breaks and logarithmic scale
+  scale_fill_gradientn(colors = RColorBrewer::brewer.pal(9, "YlOrRd"), 
+                       name = "Total Emissions (tons)", 
+                       trans = "log", 
+                       breaks = c(1000000, 10000000, 100000000),
+                       labels = c("1M", "10M", "100M")) +
+  
+  # Add title and subtitle
+  labs(
+    title = "Total Emissions by State",  
+    subtitle = " Hexbin map of US states displaying total emissions from CO2, SO2, and NOx",  
+    caption = "Data: EPA Emissions Data (2023)",  
+    alt = "A map of US states color-coded based on their total emissions, with state codes labeled."
+  ) +
+  
+  # Add state abbreviation and num_plants (number of plants) labels
+  geom_sf_text(aes(label = paste(iso3166_2, "\n", num_plants)), 
+               size = 3, color = "black", fontface = "bold") +
+  
+  # Apply minimal theme and style titles
+  theme_void() +
+  theme(
+    axis.title = element_blank(),  
+    axis.text = element_blank(),   
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(size = 12, hjust = 0.5) 
+  )
+
+```
+
+```{r}
+ggplot(my_hexbin_state) +
+  # Fill map based on 'total_emissions' with custom breaks
+  geom_sf(aes(fill = total_emissions), color = "white") +
+  
+  # Use 'YlOrRd' color scale for emissions with custom breaks and logarithmic scale
+  scale_fill_gradientn(colors = RColorBrewer::brewer.pal(9, "YlOrRd"), 
+                       name = "Total Emissions (tons)\n          log scale", 
+                       trans = "log",
+                       breaks = c(1000000, 10000000, 100000000),
+                       labels = c("1M", "10M", "100M")) +
+  
+  # Add title and subtitle
+  labs(
+    title = "Total Emissions by State",  
+    subtitle = " Hexbin map of US states displaying total emissions from CO2, SO2, and NOx",  
+    caption = "Data: EPA Emissions Data (2023)",  
+    alt = "A map of US states color-coded based on their total emissions, with state codes labeled."
+  ) +
+  
+  # Add state abbreviation and num_plants labels with color scale
+  geom_sf_text(aes(label = paste(iso3166_2, "\n", num_plants), color = num_plants), 
+               size = 3, fontface = "bold") +
+  
+  # Apply color scale for number of plants
+  scale_color_continuous(name = "Number of Plants", low = "black", high = "white") +
+  
+  # Apply minimal theme and style titles
+  theme_void() +
+  theme(
+    axis.title = element_blank(),  
+    axis.text = element_blank(),   
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(size = 12, hjust = 0.5) 
+  )
+
+```
+
+```{r}
+ggplot(my_hexbin_state) +
+  # Fill map based on 'total_emissions' with custom breaks
+  geom_sf(aes(fill = total_emissions), color = "white") +
+  
+  # Use 'YlOrRd' color scale for emissions with custom breaks and logarithmic scale
+  scale_fill_gradientn(colors = RColorBrewer::brewer.pal(9, "YlOrRd"), 
+                       name = "Total Emissions (tons)\n          log scale", 
+                       trans = "log",
+                       breaks = c(1000000, 10000000, 100000000),
+                       labels = c("1M", "10M", "100M")) +
+  
+  # Add title and subtitle
+  labs(
+    title = "Total Emissions by State",  
+    subtitle = " Hexbin map of US states displaying total emissions from CO2, SO2, and NOx",  
+    caption = "Data: EPA Emissions Data (2023)",  
+    alt = "A map of US states color-coded based on their total emissions, with state codes labeled."
+  ) +
+  
+  # Add state abbreviation and num_plants labels with color scale
+  geom_sf_text(aes(label = paste(iso3166_2, "\n", num_plants), color = num_plants), 
+               size = 3, fontface = "bold") +
+  
+  # Apply color scale for number of plants with custom labels for least and most
+  scale_color_continuous(name = "Number of Plants", 
+                         low = "black", high = "white", 
+                         breaks = c(min(my_hexbin_state$num_plants), max(my_hexbin_state$num_plants)),
+                         labels = c("Least", "Most")) +
+  
+  # Apply minimal theme and style titles
+  theme_void() +
+  theme(
+    axis.title = element_blank(),  
+    axis.text = element_blank(),   
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(size = 12, hjust = 0.5) 
+  )
+
+```
+
+```{r}
+#| fig-asp: 1.2
+
+# Reorder the states based on fuel type and then by total emissions
+state_summary$state_ordered <- factor(state_summary$`Plant state abbreviation`, 
+                                      levels = state_summary$`Plant state abbreviation`[order(state_summary$most_common_primary_fuel, state_summary$total_emissions)])
+
+# Bar plot of NOx emissions, ordered by fuel type
+ggplot(state_summary, aes(y = state_ordered, x = total_emissions, fill = most_common_primary_fuel)) +
+  geom_bar(stat = "identity", width = 0.8) +  # Increase bar width to make them thicker
+  labs(
+    title = "Total Emissions by State",  # Title of the plot
+    subtitle = "Emissions from NOx, CO2, and SO2 by Fuel Type across States",  # Add subtitle
+    caption = "Data: EPA Emissions Data (2023)",  # Caption
+    alt = "A bar chart color-coded based primary fuel type, with total emissions by state.",
+    y = "State",  # Label for the y-axis
+    x = "Total Emissions (tons)"  # Label for the x-axis
+  ) +
+  scale_fill_manual(values = c("OIL" = "darkorange", # Assign colors for each fuel type
+                               "GAS" = "darkred", 
+                               "COAL" = "black", 
+                               "BIOMASS" = "gold", 
+                               "GEOTHERMAL" = "gray"), 
+                    name = "Most Common Fuel Type") +  # Change legend title
+  scale_x_continuous(labels = scales::comma) +  # Format x-axis to avoid scientific notation and use comma
+  theme_minimal() +  # Apply minimal theme for a clean look
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  # Center title
+    plot.subtitle = element_text(size = 12, hjust = 0.5),  # Center subtitle
+    axis.text.x = element_text(angle = 0, hjust = 0.5),  # Set x-axis labels horizontal
+    axis.text.y = element_text(size = 8),  # Adjust size of y-axis text
+    axis.title.x = element_text(size = 12),  # Adjust size of x-axis title
+    axis.title.y = element_text(size = 12),  # Adjust size of y-axis title
+    axis.ticks = element_line(color = "black"),  # Add ticks on both axes
+    axis.ticks.length = unit(0.3, "cm"),  # Set length of the ticks
+    legend.position = "bottom",  # Keep the legend for fuel types
+    panel.background = element_blank()  # Remove background color from the panel
+  )
+
+```
+
+```{r}
+#| fig-asp: 1.2
+
+# Reorder the states based on fuel type and then by total emissions
+state_summary$state_ordered <- factor(state_summary$`Plant state abbreviation`, 
+                                      levels = state_summary$`Plant state abbreviation`[order(state_summary$most_common_primary_fuel, state_summary$total_emissions)])
+
+# Bar plot of NOx emissions, ordered by fuel type
+ggplot(state_summary, aes(y = state_ordered, x = total_emissions, fill = most_common_primary_fuel)) +
+  geom_bar(stat = "identity", width = 0.8) +  # Increase bar width to make them thicker
+  labs(
+    title = "Total Emissions by State",  # Title of the plot
+    subtitle = "Emissions from NOx, CO2, and SO2 by Fuel Type across States",  # Add subtitle
+    caption = "Data: EPA Emissions Data (2023)",  
+    alt = "A bar chart color-coded based primary fuel type, with total emissions by state.",
+    y = "State",  # Label for the y-axis
+    x = "Total Emissions (tons)"  # Label for the x-axis
+  ) +
+  scale_fill_manual(values = c("OIL" = "darkorange", 
+                               "GAS" = "darkred", 
+                               "COAL" = "black", 
+                               "BIOMASS" = "gold", 
+                               "GEOTHERMAL" = "gray"), # Assign colors for each fuel type
+                    name = "Most Common Fuel Type") +  # Change legend title)  
+  scale_x_continuous(labels = scales::comma) +  # Format x-axis to avoid scientific notation and use comma
+  theme_minimal() +  # Apply minimal theme for a clean look
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  # Center title
+    plot.subtitle = element_text(size = 12, hjust = 0.5),  # Center subtitle
+    axis.text.x = element_text(angle = 0, hjust = 0.5),  # Set x-axis labels horizontal
+    axis.text.y = element_text(size = 8),  # Adjust size of y-axis text
+    axis.title.x = element_text(size = 12),  # Adjust size of x-axis title
+    axis.title.y = element_text(size = 12),  # Adjust size of y-axis title
+    axis.ticks = element_line(color = "black"),  # Add ticks on both axes
+    axis.ticks.length = unit(0.3, "cm"),  # Set length of the ticks
+    legend.position = "bottom",  # Keep the legend for fuel types
+    panel.grid = element_blank(),  # Remove all grid lines (major and minor)
+    panel.background = element_blank()  # Remove background color from the panel
+  )
+
+```
+
+```{r}
+# Make lat and long numeric
+cleaned_data$`Plant longitude` <- as.numeric(cleaned_data$`Plant longitude`)
+cleaned_data$`Plant latitude` <- as.numeric(cleaned_data$`Plant latitude`)
+```
+
+```{r}
+# Custom color palette for gradient (red to yellow to gray to black)
+custom_palette <- c("#8B0000", "#FF0000", "#FFA500", "#FFFF00", "#808080", "#000000")
+
+# Count the number of occurrences of each fuel category (most to least)
+fuel_category_counts <- cleaned_data %>%
+  count(`Plant primary fuel category`) %>%
+  arrange(desc(n))  # Sort by count, from most to least
+
+# Convert the 'Plant primary fuel category' to a factor with levels based on their counts (most to least)
+cleaned_data$fuel_category_factor <- factor(cleaned_data$`Plant primary fuel category`, 
+                                            levels = fuel_category_counts$`Plant primary fuel category`)
+
+# Create a gradient based on the factor levels of 'fuel_category_factor'
+ggplot(cleaned_data) +
+  geom_point(aes(x = `Plant longitude`, y = `Plant latitude`, 
+                 color = as.numeric(fuel_category_factor)), 
+             size = 2, alpha = 0.2) +  # Adjust point size and transparency
+  scale_color_gradientn(colors = custom_palette, 
+                        name = "Fuel Category", 
+                        breaks = seq(1, length(fuel_category_counts$`Plant primary fuel category`), by = 1),
+                        labels = fuel_category_counts$`Plant primary fuel category`) +  # Match with levels of the factor
+  labs(
+    title = "Plant Locations by State and Fuel Category",  
+    subtitle = "Scatter plot of US plants colored by primary fuel category (most to least)",  
+    caption = "Data: EPA Emissions Data (2023)",
+    alt = "Scatter plot for for primary fuel category in the US by plant location"
+  ) +
+  theme_minimal() +  # Apply minimal theme
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(size = 12, hjust = 0.5)
+  )
+
+```
+
+1. What have you learned about your data? Have any potentially interesting patterns emerged?
+
+- I learned that the emissions vary by state but there is a clear mean and some great outliers. For the fuel types I learned that the most common type is gas.  
+
+2. In HW #1, you outlined some questions that you wanted to answer using these data. Have you made any strides towards answering those questions? If yes, how so? If no, what next steps do you need to take (e.g. I need to create X plot type, I still need to track down Y data, I need to restructure existing data so that you can visualize it in Z ways, etc.)?
+
+- I sort of began to answer questions but realized I would not be able to address everything I wanted. I changed my questions by simplifying what I wanted to look at. I now have a hex bin map that explores the total emissions by state and number of power plants. I have a simple bar graph that depicts emissions by the most common primary fuel type for each state. The last visual is a scatter plot with the lon and lat that shapes into the US with every primary fuel type per plant. 
+- I am still looking at the best way to visualize the data and answer the question I posed. I have a few repetitive plots here because there are minor changes that I think make a difference but I am not sure which is better yet for my question. During discussion I will show some classmates the options and adjust based on feedback.
+
+3. What challenges do you foresee encountering with your data? These can be data wrangling and / or visualization challenges.
+
+- I foresee not being able to clearly identify plants by their fuel type in my last plot so I need to reconsider. Maybe an interactive map might be better, with changing fuel type to highlight each individually. 

@@ -1,0 +1,224 @@
+---
+title: "Drafting Fuel Type Viz.qmd"
+subtitle: "Looking for possible visuals for different audiences"
+author: "Yos Ramirez"
+date: 2025-02-05
+format: 
+  html:
+    embed-resources: true
+editor: visual
+---
+
+## Option 2 Plan
+
+I’ve decided to pursue **Option 2**, where I’ll create three visualizations to answer one overarching question, each tailored to a different target audience. 
+
+Although my original plan for **Option 1** was to explore how emissions (NOx, SO2, CO2) in the U.S. vary by state and fuel type, and to examine the relationship between the number of power plants and total emissions in each state, I found that this approach was too broad and complex for a single infographic with the visualizations I was exploring.
+
+
+### Overarching Question:
+*What are the major sources of CO2 emissions across U.S. power plants, and how do these sources vary by state?*
+
+### Sub-Questions for Each Audience:
+1. **Technical Audience**: What is the total CO2 emission by plant primary fuel type?
+2. **Policy Makers**: How do fuel types contribute to total CO2 emissions by state in proportion?
+3. **General Public**: Which states have the highest total CO2 emissions, and how do they compare?
+
+### Data Overview:
+I’ll be using the **eGrid 2023 dataset**, which includes the following key variables:
+- **Plant primary fuel category**: Defines the fuel type (e.g., coal, natural gas, nuclear).
+- **Plant state abbreviation**: Indicates the U.S. state for each power plant.
+- **Plant annual CO2 emissions (tons)**: Represents the CO2 emissions for each plant annually.
+- **Plant latitude and longitude**: Geospatial data to visualize emissions by location if necessary.
+
+I’ll use **Plant primary fuel category** to categorize emissions by fuel type and **Plant state abbreviation** to compare emissions across states. **Plant annual CO2 emissions (tons)** will be the primary metric for comparing emissions.
+
+"I found two excellent visualizations for inspiration:
+
+1. **Heat Map of GHG Emissions**  
+   I found an interesting heat map that illustrates the variations in the average hourly greenhouse gas (GHG) emissions intensity of grid systems. This type of heat map might inspire me when visualizing emissions data by time or fuel type. You can view the heat map [here](https://www.researchgate.net/figure/Heat-map-illustrating-variations-in-the-average-hourly-GHG-emissions-intensity-of-grid_fig3_347046611).
+
+2. **Carbon Emissions Visualization Examples**  
+   Another useful resource is an article on **Storybench** that highlights five different ways organizations are visualizing carbon emissions. This could give me ideas for various graphical approaches to presenting emissions data. Check out the article [here](https://www.storybench.org/five-ways-organizations-are-visualizing-carbon-emissions/)."
+   
+"I’ve sketched three visualizations for my target audiences:
+
+A horizontal bar chart showing CO2 emissions by fuel type (technical audience).
+A pie chart illustrating proportional CO2 emissions by state for policymakers.
+A heatmap displaying total CO2 emissions across states for the general public."
+
+![Plot 1](figures/plot1.png)
+
+![Plot 2](figures/plot2.png)
+
+![Plot 3](figures/plot3.png)
+
+
+```{r}
+#| warning = FALSE
+
+# Load libraries and suppress messages
+suppressMessages(library(readxl))
+suppressMessages(library(dplyr))
+suppressMessages(library(ggplot2))
+```
+
+
+```{r}
+# Load in main data and list the sheet names in the Excel file
+sheet_names <- excel_sheets("data/egrid2023_data_rev1.xlsx")
+print(sheet_names)
+# Read necessary data from a specific sheet
+data_sheet <- read_excel("data/egrid2023_data_rev1.xlsx", sheet = "PLNT23")
+# Save column names to a .txt file to view
+write(colnames(data_sheet), "column_names.txt")
+```
+
+
+```{r}
+#| warning = FALSE
+# Select specific columns (variables)
+selected_data <- data_sheet %>%
+  select(`Data Year`, 
+         `Plant state abbreviation`, 
+         `Plant name`, 
+         `Plant annual CO2 emissions (tons)`, 
+         `Plant annual SO2 emissions (tons)`, 
+         `Plant annual NOx emissions (tons)`, 
+         `Plant primary fuel category`, 
+         `Plant latitude`, 
+         `Plant longitude`)
+
+# Remove rows with missing values
+cleaned_data <- na.omit(selected_data)
+
+# Convert emissions columns to numeric
+cleaned_data$`Plant annual CO2 emissions (tons)` <- as.numeric(cleaned_data$`Plant annual CO2 emissions (tons)`)
+cleaned_data$`Plant annual SO2 emissions (tons)` <- as.numeric(cleaned_data$`Plant annual SO2 emissions (tons)`)
+cleaned_data$`Plant annual NOx emissions (tons)` <- as.numeric(cleaned_data$`Plant annual NOx emissions (tons)`)
+
+# Remove rows where the state abbreviation is "PSTATABB"
+cleaned_data <- cleaned_data %>%
+  filter(`Plant state abbreviation` != "PSTATABB")
+
+# Summarize the data by state and primary fuel category
+state_summary <- cleaned_data %>%
+  group_by(`Plant state abbreviation`) %>%
+  summarize(
+    # Calculate total emissions for each pollutant
+    total_CO2_emissions = sum(`Plant annual CO2 emissions (tons)`, na.rm = TRUE),
+    total_SO2_emissions = sum(`Plant annual SO2 emissions (tons)`, na.rm = TRUE),
+    total_NOx_emissions = sum(`Plant annual NOx emissions (tons)`, na.rm = TRUE),
+    # Calculate the number of plants in each state
+    num_plants = n(),
+    # Add total emissions by summing the three types
+    total_emissions = total_CO2_emissions + total_SO2_emissions + total_NOx_emissions
+  )
+
+# Calculate the most common primary fuel category per state
+fuel_category_per_state <- cleaned_data %>%
+  group_by(`Plant state abbreviation`) %>%
+  count(`Plant primary fuel category`) %>%
+  top_n(1, n) %>%
+  select(`Plant state abbreviation`, `Plant primary fuel category`) %>%
+  rename(most_common_primary_fuel = `Plant primary fuel category`)
+
+# Combine the emissions summary and the most common primary fuel category
+final_summary <- state_summary %>%
+  left_join(fuel_category_per_state, by = "Plant state abbreviation")
+
+# Summarize the CO2 emissions by plant primary fuel type
+fuel_emissions_summary <- cleaned_data %>%
+  group_by(`Plant primary fuel category`) %>%
+  summarize(total_CO2_emissions = sum(`Plant annual CO2 emissions (tons)`, na.rm = TRUE))
+
+```
+
+### Plot for Technical Writing / Subject Matter Experts (SMEs)
+
+```{r}
+#| warning = FALSE
+
+# Plot 1 
+ggplot(fuel_emissions_summary, aes(x = reorder(`Plant primary fuel category`, total_CO2_emissions), y = total_CO2_emissions)) +
+  geom_bar(stat = "identity", fill = "steelblue") +  
+  geom_text(aes(label = scales::comma(total_CO2_emissions, accuracy = 1)), vjust = -0.5, color = "black", size = 3) + 
+  labs(
+    title = "CO2 Emissions by Plant Primary Fuel Type",
+    x = "Plant Primary Fuel Type",
+    y = "Total CO2 Emissions (tons)"
+  ) +
+  theme_minimal() +
+  coord_flip() + 
+  theme(axis.text.x = element_blank()) +  # Remove x-axis labels
+  scale_y_continuous(labels = scales::comma)
+
+```
+
+### Plot for Policy Makers / Decision Makers
+
+```{r}
+#| warning = FALSE
+
+# Calculate percentages for each fuel type
+fuel_emissions_summary <- fuel_emissions_summary %>%
+  mutate(percentage = round(total_CO2_emissions / sum(total_CO2_emissions) * 100, 1))
+
+# Plot 2
+ggplot(fuel_emissions_summary, aes(x = "", y = total_CO2_emissions, fill = `Plant primary fuel category`)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(
+    title = "CO2 Emissions by Plant Primary Fuel Type",
+    fill = "Fuel Type"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_void() +
+  theme(legend.title = element_blank()) +
+  theme(legend.position = "right") +
+  scale_fill_brewer(palette = "Set3", 
+                    labels = paste(fuel_emissions_summary$`Plant primary fuel category`, 
+                                   fuel_emissions_summary$percentage, "%")) 
+
+```
+
+### Plot for Public Outreach / General Audience
+
+```{r}
+#| warning = FALSE
+
+# Plot 3
+ggplot(final_summary, aes(x = `Plant state abbreviation`, y = 1, fill = total_emissions)) +
+  geom_tile() +
+  scale_fill_gradient(low = "lightblue", high = "red", 
+                      labels = scales::comma) + 
+  labs(
+    title = "Total Emissions by State",
+    x = "State",
+    y = "",
+    fill = "Emissions (tons)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  coord_flip()
+
+```
+
+#### Questions
+
+*Challenges Encountered or Anticipated*
+
+Building visualizations in R can be challenging, especially when trying to ensure clarity across different audiences. One challenge I encountered was data cleaning and preparation, which can be time-consuming, particularly with large datasets containing missing values or inconsistent column names. Proper structuring of the data before building visualizations is essential to avoid errors. Another challenge was choosing the right visualization type for each audience. For example, determining whether to use a bar chart or a pie chart for CO2 emissions required careful consideration of their strengths and weaknesses in conveying detailed comparisons versus proportional contributions.
+
+Additionally, I anticipate challenges with aesthetics and clarity, especially when working with large datasets or many categories, such as different fuel types. Striking a balance between providing enough information for technical audiences while keeping designs simple for non-experts is crucial. Ensuring legibility and readability of the visualizations, particularly with crowded labels or small charts, is another key challenge. Finally, integrating multiple plot types, like pie charts, bar charts, and heatmaps, while maintaining consistent design principles can be tricky, as each plot type needs to communicate its data clearly.
+
+*ggplot Extension Tools / Packages Needed*
+
+To enhance my visualizations, I plan to use several ggplot2 extensions. Packages like ggthemes will help me apply aesthetically pleasing and context-appropriate themes, while ggrepel will improve text label positioning to avoid overlap in crowded charts. ggpubr will help enhance the appearance and layout of ggplot2 plots, and ggforce can extend functionality with additional chart types, such as radial charts. For data manipulation and transformation, I will continue using dplyr for efficient data wrangling and tidyr to reshape and tidy the data. Lastly, I may explore the geom_textpath function from ggforce to create paths for text or labels, particularly in pie charts, to enhance their aesthetic appeal.
+
+*Feedback Needed*
+
+To ensure my visualizations effectively communicate insights to the three target audiences, feedback in several key areas would be helpful. First, regarding clarity and message, I need feedback on whether the insights are communicated clearly for each audience. For example, is the pie chart for policy makers easy to understand and interpret? Does it effectively highlight the key takeaway without overwhelming them with details? Are the bar plots and heatmaps suitable for a general audience, making complex data easier to grasp without jargon? Additionally, I need to ensure that there’s enough context provided, especially for non-technical audiences, with clear labeling and axes that explain the data without causing confusion.
+
+For design feedback, it's important to know if the color schemes, text sizes, and layouts are tailored to the intended audience. Are the designs engaging and accessible for both experts and non-experts? For example, does the color palette work well for the technical audience, while also being clear and appealing for the public? Are there any improvements needed in terms of font size or plot title clarity to make the plots more readable and informative for each group? For technical accuracy, I would appreciate feedback on whether the data is being represented accurately and effectively. Specifically, does the way I aggregate emissions by fuel type or state make sense and provide meaningful insights for each audience? Are the comparisons clear and aligned with the expectations of the audience, especially when it comes to the primary fuel category for different states?
