@@ -11,48 +11,43 @@ editor: visual
 
 ## Option 2 Plan
 
-I’ve decided to pursue **Option 2**, where I’ll create three visualizations to answer one overarching question, each tailored to a different target audience. 
+I’ve decided to pursue **Option 2**, where I’ll create three visualizations to answer one overarching question, each tailored to a different target audience.
 
 Although my original plan for **Option 1** was to explore how emissions (NOx, SO2, CO2) in the U.S. vary by state and fuel type, and to examine the relationship between the number of power plants and total emissions in each state, I found that this approach was too broad and complex for a single infographic with the visualizations I was exploring.
 
-
 ### Overarching Question:
-*What are the major sources of CO2 emissions across U.S. power plants, and how do these sources vary by state?*
+
+*What are the major sources of CO2 emissions across U.S. power plants, and how do these sources vary?*
 
 ### Sub-Questions for Each Audience:
-1. **Technical Audience**: What is the total CO2 emission by plant primary fuel type?
-2. **Policy Makers**: How do fuel types contribute to total CO2 emissions by state in proportion?
-3. **General Public**: Which states have the highest total CO2 emissions, and how do they compare?
+
+1.  **Technical Audience**: What is the total CO2 emission by plant primary fuel type?
+2.  **Policy Makers**: How do fuel types contribute to total CO2 emissions in proportion to eachother?
+3.  **General Public**: Which fuel types have the highest total CO2 emissions, and how do they compare?
 
 ### Data Overview:
-I’ll be using the **eGrid 2023 dataset**, which includes the following key variables:
-- **Plant primary fuel category**: Defines the fuel type (e.g., coal, natural gas, nuclear).
-- **Plant state abbreviation**: Indicates the U.S. state for each power plant.
-- **Plant annual CO2 emissions (tons)**: Represents the CO2 emissions for each plant annually.
-- **Plant latitude and longitude**: Geospatial data to visualize emissions by location if necessary.
+
+I’ll be using the **eGrid 2023 dataset**, which includes the following key variables: - **Plant primary fuel category**: Defines the fuel type (e.g., coal, natural gas, nuclear). - **Plant state abbreviation**: Indicates the U.S. state for each power plant. - **Plant annual CO2 emissions (tons)**: Represents the CO2 emissions for each plant annually. - **Plant latitude and longitude**: Geospatial data to visualize emissions by location if necessary.
 
 I’ll use **Plant primary fuel category** to categorize emissions by fuel type and **Plant state abbreviation** to compare emissions across states. **Plant annual CO2 emissions (tons)** will be the primary metric for comparing emissions.
 
 "I found two excellent visualizations for inspiration:
 
-1. **Heat Map of GHG Emissions**  
-   I found an interesting heat map that illustrates the variations in the average hourly greenhouse gas (GHG) emissions intensity of grid systems. This type of heat map might inspire me when visualizing emissions data by time or fuel type. You can view the heat map [here](https://www.researchgate.net/figure/Heat-map-illustrating-variations-in-the-average-hourly-GHG-emissions-intensity-of-grid_fig3_347046611).
+1.  **Heat Map of GHG Emissions**\
+    I found an interesting heat map that illustrates the variations in the average hourly greenhouse gas (GHG) emissions intensity of grid systems. This type of heat map might inspire me when visualizing emissions data by time or fuel type. You can view the heat map [here](https://www.researchgate.net/figure/Heat-map-illustrating-variations-in-the-average-hourly-GHG-emissions-intensity-of-grid_fig3_347046611).
 
-2. **Carbon Emissions Visualization Examples**  
-   Another useful resource is an article on **Storybench** that highlights five different ways organizations are visualizing carbon emissions. This could give me ideas for various graphical approaches to presenting emissions data. Check out the article [here](https://www.storybench.org/five-ways-organizations-are-visualizing-carbon-emissions/)."
-   
+2.  **Carbon Emissions Visualization Examples**\
+    Another useful resource is an article on **Storybench** that highlights five different ways organizations are visualizing carbon emissions. This could give me ideas for various graphical approaches to presenting emissions data. Check out the article [here](https://www.storybench.org/five-ways-organizations-are-visualizing-carbon-emissions/)."
+
 "I’ve sketched three visualizations for my target audiences:
 
-A horizontal bar chart showing CO2 emissions by fuel type (technical audience).
-A pie chart illustrating proportional CO2 emissions by state for policymakers.
-A heatmap displaying total CO2 emissions across states for the general public."
+A horizontal bar chart showing CO2 emissions by fuel type (technical audience). A pie chart illustrating proportional CO2 emissions by state for policymakers. A heatmap displaying total CO2 emissions across states for the general public."
 
 ![Plot 1](figures/plot1.png)
 
 ![Plot 2](figures/plot2.png)
 
 ![Plot 3](figures/plot3.png)
-
 
 ```{r}
 #| warning = FALSE
@@ -61,8 +56,10 @@ A heatmap displaying total CO2 emissions across states for the general public."
 suppressMessages(library(readxl))
 suppressMessages(library(dplyr))
 suppressMessages(library(ggplot2))
+library(gridExtra)  # For combining plots side by side
+library(RColorBrewer)
+library(gridExtra)
 ```
-
 
 ```{r}
 # Load in main data and list the sheet names in the Excel file
@@ -73,7 +70,6 @@ data_sheet <- read_excel("data/egrid2023_data_rev1.xlsx", sheet = "PLNT23")
 # Save column names to a .txt file to view
 write(colnames(data_sheet), "column_names.txt")
 ```
-
 
 ```{r}
 #| warning = FALSE
@@ -137,12 +133,100 @@ fuel_emissions_summary <- cleaned_data %>%
 ### Plot for Technical Writing / Subject Matter Experts (SMEs)
 
 ```{r}
-#| warning = FALSE
+ggplot(fuel_emissions_summary, aes(x = total_CO2_emissions, 
+                                  y = reorder(`Plant primary fuel category`, total_CO2_emissions))) +
+  geom_point(aes(color = total_CO2_emissions), size = 4) +  # Dot size based on emissions
+  scale_color_gradient(low = "lightblue", high = "darkred") +  # High contrast color gradient
+  labs(
+    title = "CO2 Emissions by Plant Primary Fuel Type",
+    x = "Total CO2 Emissions (tons)",  # Keep title for context, no need for x-axis
+    y = "Plant Primary Fuel Type",
+    color = "Emissions (tons)"
+  ) +
+  theme_minimal() +
+  scale_x_continuous(labels = scales::comma) +  # Format x-axis with commas (keeps scientific notation)
+  theme(
+    axis.text.x = element_blank(),  # Remove x-axis labels
+    axis.title.x = element_blank(),  # Remove x-axis title
+    axis.text.y = element_text(size = 8, family = "Arial"),  # Set y-axis text to Times New Roman
+    axis.title.y = element_text(size = 14, family = "Times New Roman", face = "bold"),  # Set y-axis title to Times New Roman
+    plot.title = element_text(hjust = 0.5, size = 16, family = "Times New Roman", face = "bold"),  # Set title to Times New Roman
+    legend.title = element_text(size = 14, family = "Arial"),  # Set legend title to Arial
+    legend.text = element_text(family = "Arial"),  # Set legend text to Arial
+    legend.position = "right",  # Position the legend to the right
+    panel.grid = element_blank()  # Remove grid lines
+  ) +
+  guides(
+    color = guide_colorbar(label = scales::comma)  # Format legend color bar labels to use commas
+  )
 
-# Plot 1 
-ggplot(fuel_emissions_summary, aes(x = reorder(`Plant primary fuel category`, total_CO2_emissions), y = total_CO2_emissions)) +
-  geom_bar(stat = "identity", fill = "steelblue") +  
-  geom_text(aes(label = scales::comma(total_CO2_emissions, accuracy = 1)), vjust = -0.5, color = "black", size = 3) + 
+```
+
+### Plot for Policy Makers / Decision Makers
+
+```{r}
+# Custom color palette using "RdYlBu" from RColorBrewer
+fuel_type_colors <- brewer.pal(11, "RdYlBu")  # Red-Yellow-Blue palette with 11 colors
+
+# Calculate percentages for all fuel types (including coal and gas)
+fuel_emissions_summary <- fuel_emissions_summary %>%
+  mutate(percentage = round(total_CO2_emissions / sum(total_CO2_emissions) * 100, 1))
+
+# Plot 1: Pie chart including Coal and Gas with "RdYlBu" colors
+plot1 <- ggplot(fuel_emissions_summary, aes(x = "", y = total_CO2_emissions, fill = `Plant primary fuel category`)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(
+    title = "CO2 Emissions by Fuel Type",  # Main title for the first plot
+    fill = "Fuel Type"
+  ) +
+  scale_fill_manual(values = fuel_type_colors) +  # Apply custom colors from RdYlBu
+  theme_void() +
+  theme(
+    legend.title = element_text(family = "Arial", size = 12),  # Legend in Arial
+    legend.position = "right",  # Add legend to the right for plot1
+    plot.title = element_text(hjust = 0.5, family = "Times New Roman", size = 16, face = "bold")  # Title in Times New Roman
+  ) +
+  scale_fill_manual(values = fuel_type_colors)  # Remove percentages from the legend
+
+# Plot 2: Pie chart excluding Coal and Gas with "RdYlBu" colors
+
+# Filter out coal and gas
+fuel_emissions_filtered <- fuel_emissions_summary %>%
+  filter(!`Plant primary fuel category` %in% c("COAL", "GAS"))
+
+plot2 <- ggplot(fuel_emissions_filtered, aes(x = "", y = total_CO2_emissions, fill = `Plant primary fuel category`)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(
+    subtitle = "CO2 Emissions by Fuel Type\n(Excluding Coal and Gas)",  # Subtitle for the second pie chart
+    fill = "Fuel Type"
+  ) +
+  scale_fill_manual(values = fuel_type_colors) +  # Apply custom colors from RdYlBu
+  theme_void() +
+  theme(
+    legend.title = element_blank(),  # Remove the legend title for plot2
+    legend.position = "none",  # Remove legend from plot2
+    plot.title = element_blank(),  # Remove title for the second plot
+    plot.subtitle = element_text(hjust = 0.5, family = "Times New Roman", size = 16, face = "bold")  # Subtitle in Arial, italicized
+  )
+
+# Combine the two pie charts side by side with size adjustment
+grid.arrange(plot1, plot2, ncol = 2, widths = c(1.5, 1))  # Adjust the size of the pie charts (main one bigger)
+
+
+```
+
+
+### Plot for Public Outreach / General Audience
+
+```{r}
+ggplot(fuel_emissions_summary, aes(x = reorder(`Plant primary fuel category`, total_CO2_emissions), 
+                                  y = total_CO2_emissions)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.6) +  # Add transparency with alpha
+  geom_text(aes(label = scales::comma(total_CO2_emissions, accuracy = 1)), 
+            vjust = -0.5, color = "darkred", size = 3, family = "Arial", fontface = "bold", 
+            check_overlap = TRUE) +  
   labs(
     title = "CO2 Emissions by Plant Primary Fuel Type",
     x = "Plant Primary Fuel Type",
@@ -150,58 +234,15 @@ ggplot(fuel_emissions_summary, aes(x = reorder(`Plant primary fuel category`, to
   ) +
   theme_minimal() +
   coord_flip() + 
-  theme(axis.text.x = element_blank()) +  # Remove x-axis labels
-  scale_y_continuous(labels = scales::comma)
-
-```
-
-### Plot for Policy Makers / Decision Makers
-
-```{r}
-#| warning = FALSE
-
-# Calculate percentages for each fuel type
-fuel_emissions_summary <- fuel_emissions_summary %>%
-  mutate(percentage = round(total_CO2_emissions / sum(total_CO2_emissions) * 100, 1))
-
-# Plot 2
-ggplot(fuel_emissions_summary, aes(x = "", y = total_CO2_emissions, fill = `Plant primary fuel category`)) +
-  geom_bar(stat = "identity", width = 1) +
-  coord_polar(theta = "y") +
-  labs(
-    title = "CO2 Emissions by Plant Primary Fuel Type",
-    fill = "Fuel Type"
+  theme(
+    axis.text.x = element_blank(),  # Remove x-axis labels
+    axis.title.x = element_text(size = 14, family = "Times New Roman", "bold"),  # Change font of x-axis title
+    axis.title.y = element_text(size = 14, family = "Times New Roman", "bold"),  # Change font of y-axis title
+    axis.text.y = element_text(size = 8, family = "Arial", face = "bold"),  # Change font of axis text
+    panel.grid = element_blank(),  # Remove background grid
+    plot.title = element_text(hjust = 0.5, size = 16, family = "Times New Roman", face = "bold")  # Center the title and change font
   ) +
-  scale_fill_brewer(palette = "Set3") +
-  theme_void() +
-  theme(legend.title = element_blank()) +
-  theme(legend.position = "right") +
-  scale_fill_brewer(palette = "Set3", 
-                    labels = paste(fuel_emissions_summary$`Plant primary fuel category`, 
-                                   fuel_emissions_summary$percentage, "%")) 
-
-```
-
-### Plot for Public Outreach / General Audience
-
-```{r}
-#| warning = FALSE
-
-# Plot 3
-ggplot(final_summary, aes(x = `Plant state abbreviation`, y = 1, fill = total_emissions)) +
-  geom_tile() +
-  scale_fill_gradient(low = "lightblue", high = "red", 
-                      labels = scales::comma) + 
-  labs(
-    title = "Total Emissions by State",
-    x = "State",
-    y = "",
-    fill = "Emissions (tons)"
-  ) +
-  theme_minimal() +
-  theme(axis.text.y = element_blank(),
-        axis.ticks.y = element_blank()) +
-  coord_flip()
+  scale_y_continuous(labels = scales::comma)  # Format y-axis labels with commas
 
 ```
 
